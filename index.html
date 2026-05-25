@@ -287,6 +287,7 @@
           <button id="loadYoutubeBtn" class="blue">讀取 YouTube</button>
           <button id="openYoutubeBtn">另開 YouTube</button>
           <button id="playYoutubeBtn">播放 YouTube</button>
+          <button id="pauseYoutubeBtn">暫停 YouTube</button>
           <button id="stopYoutubeBtn">停止 YouTube</button>
         </div>
         <div id="youtubePlayer"></div>
@@ -297,7 +298,10 @@
 
         <div class="inline" style="margin:14px 0;">
           <button id="addSegmentBtn">新增段落</button>
-          <button id="enableFollowBtn" class="primary">啟用段落跟隨</button>
+          <label class="inline" style="gap:6px;">
+            <input id="enableFollowCheckbox" type="checkbox" />
+            啟用段落跟隨
+          </label>
         </div>
 
         <table>
@@ -365,6 +369,7 @@
     let pendingYoutubeId = '';
     let followSegments = false;
     let youtubePollTimer = null;
+    let lastMatchedSegmentKey = '';
 
     const sequencerEl = document.getElementById('sequencer');
     const soundControlsEl = document.getElementById('soundControls');
@@ -804,31 +809,64 @@
 
     function playYoutube() {
       if (youtubePlayer && youtubePlayer.playVideo) youtubePlayer.playVideo();
-      if (!timer) startSequencer(false);
       startYoutubePolling();
     }
 
-    function stopYoutube() {
+    function pauseYoutube() {
       if (youtubePlayer && youtubePlayer.pauseVideo) youtubePlayer.pauseVideo();
-      stopYoutubePolling();
+      pauseSequencer();
+    }
+
+    function stopYoutube() {
+      if (youtubePlayer && youtubePlayer.pauseVideo) {
+        youtubePlayer.pauseVideo();
+        if (youtubePlayer.seekTo) youtubePlayer.seekTo(0, true);
+      }
+      stopSequencer(true);
+      lastMatchedSegmentKey = '';
+      updateSegmentHighlight(null);
     }
 
     function startYoutubePolling() {
-      stopYoutubePolling();
+      if (youtubePollTimer) return;
       youtubePollTimer = setInterval(() => {
         if (!followSegments || !youtubePlayer || !youtubePlayer.getCurrentTime) return;
         const t = youtubePlayer.getCurrentTime();
         const segment = state.segments.find(s => t >= Number(s.start) && t < Number(s.end));
-        if (segment && segment.groupId !== state.activeGroupId) {
-          state.activeGroupId = segment.groupId;
-          renderAll();
+
+        if (!segment) {
+          lastMatchedSegmentKey = '';
+          updateSegmentHighlight(null);
+          return;
         }
-      }, 400);
+
+        const key = `${segment.start}-${segment.end}-${segment.groupId}`;
+        if (key === lastMatchedSegmentKey) return;
+        lastMatchedSegmentKey = key;
+
+        state.activeGroupId = segment.groupId;
+        groupSelectEl.value = state.activeGroupId;
+        renderSequencer();
+        updateSegmentHighlight(segment);
+
+        if (!timer) {
+          stepIndex = 0;
+          startSequencer(true);
+        }
+      }, 200);
     }
 
     function stopYoutubePolling() {
       if (youtubePollTimer) clearInterval(youtubePollTimer);
       youtubePollTimer = null;
+    }
+
+    function updateSegmentHighlight(activeSegment) {
+      document.querySelectorAll('#segmentBody tr').forEach(row => row.style.background = '');
+      if (!activeSegment) return;
+      const rows = Array.from(document.querySelectorAll('#segmentBody tr'));
+      const idx = state.segments.indexOf(activeSegment);
+      if (rows[idx]) rows[idx].style.background = '#eef7e8';
     }
 
     function escapeHtml(text) {
@@ -864,12 +902,13 @@
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     });
     document.getElementById('playYoutubeBtn').addEventListener('click', playYoutube);
+    document.getElementById('pauseYoutubeBtn').addEventListener('click', pauseYoutube);
     document.getElementById('stopYoutubeBtn').addEventListener('click', stopYoutube);
-    document.getElementById('enableFollowBtn').addEventListener('click', () => {
-      followSegments = !followSegments;
-      document.getElementById('enableFollowBtn').textContent = followSegments ? '已啟用段落跟隨' : '啟用段落跟隨';
+    document.getElementById('enableFollowCheckbox').addEventListener('change', (e) => {
+      followSegments = e.target.checked;
+      lastMatchedSegmentKey = '';
       if (followSegments) startYoutubePolling();
-      else stopYoutubePolling();
+      else updateSegmentHighlight(null);
     });
     groupSelectEl.addEventListener('change', e => {
       state.activeGroupId = e.target.value;
