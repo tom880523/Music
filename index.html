@@ -457,9 +457,10 @@
         for (let i = 0; i < STEPS; i++) {
           const cell = document.createElement('div');
           cell.className = 'step';
+          cell.dataset.step = String(i);
           if (pattern.includes(i)) cell.classList.add('active');
           if (i === stepIndex && timer) cell.classList.add('playhead');
-          cell.textContent = i % 4 === 0 ? Math.floor(i / 4) + 1 : '';
+          cell.textContent = '';
           cell.addEventListener('click', () => toggleStep(soundIdx, i));
           sequencerEl.appendChild(cell);
         }
@@ -600,7 +601,7 @@
       timer = setInterval(() => {
         stepIndex = (stepIndex + 1) % STEPS;
         playStep();
-        renderSequencer();
+        updatePlayhead();
       }, intervalMs);
       updatePlayButton();
       renderSequencer();
@@ -621,6 +622,11 @@
       if (reset) stepIndex = 0;
       updatePlayButton();
       renderSequencer();
+    }
+
+    function updatePlayhead() {
+      document.querySelectorAll('.step.playhead').forEach(el => el.classList.remove('playhead'));
+      document.querySelectorAll(`.step[data-step="${stepIndex}"]`).forEach(el => el.classList.add('playhead'));
     }
 
     function playStep() {
