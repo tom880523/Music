@@ -837,6 +837,10 @@
         if (!segment) {
           lastMatchedSegmentKey = '';
           updateSegmentHighlight(null);
+
+          // 若目前 YouTube 時間不在任何已設定段落內，就停止節奏。
+          // 特別是最後一段結束後，不應該讓最後一組繼續無限循環播放。
+          if (timer) stopSequencer(true);
           return;
         }
 
@@ -846,13 +850,12 @@
 
         state.activeGroupId = segment.groupId;
         groupSelectEl.value = state.activeGroupId;
-        renderSequencer();
         updateSegmentHighlight(segment);
 
-        if (!timer) {
-          stepIndex = 0;
-          startSequencer(true);
-        }
+        // 進入新的 YouTube 段落時，節奏一定從該播放組的第 1 格重新開始，
+        // 避免上一段停在第 8 格，下一段也從第 8 格接著播。
+        stepIndex = 0;
+        startSequencer(true);
       }, 200);
     }
 
