@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>自訂聲音節奏播放器 + YouTube 段落編排</title>
+  <style>
+    :root {
+      --bg: #f2f2f2;
+      --panel: #ffffff;
+      --line: #dddddd;
+      --text: #222;
+      --muted: #777;
+      --green: #6caf4a;
+      --green-dark: #4c8f2d;
+      --blue: #3b82f6;
+      --red: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft JhengHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    h1 {
+      margin: 0 0 20px;
+      font-size: 34px;
+      font-weight: 500;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin: 0 0 16px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.35fr 0.9fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .toolbar,
+    .row,
+    .inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar { margin-bottom: 18px; }
+
+    button,
+    input,
+    select,
+    textarea {
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    button {
+      border: 1px solid #ddd;
+      background: #f8f8f8;
+      border-radius: 6px;
+      padding: 9px 13px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    button:hover { background: #eee; }
+    button.primary { background: var(--green); color: white; border-color: var(--green); }
+    button.primary:hover { background: var(--green-dark); }
+    button.blue { background: var(--blue); color: white; border-color: var(--blue); }
+    button.red { background: var(--red); color: white; border-color: var(--red); }
+    button.small { padding: 6px 9px; font-size: 13px; }
+
+    input[type="number"],
+    input[type="text"],
+    input[type="url"],
+    select {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 8px 10px;
+      min-height: 38px;
+      background: white;
+    }
+
+    input[type="file"] { max-width: 260px; }
+
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 12px;
+      resize: vertical;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .sequencer-wrap {
+      overflow-x: auto;
+      border: 1px solid #e4e4e4;
+      border-radius: 8px;
+      padding: 16px;
+      background: #fafafa;
+    }
+
+    .sequencer {
+      display: grid;
+      grid-template-columns: 180px repeat(16, 32px);
+      gap: 4px;
+      align-items: center;
+      min-width: 760px;
+    }
+
+    .sound-name {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 10px;
+      font-size: 14px;
+      min-height: 42px;
+      text-align: right;
+    }
+
+    .step,
+    .beat-label {
+      width: 32px;
+      height: 42px;
+      border-radius: 4px;
+      border: 1px solid #e5e5e5;
+      background: white;
+      display: grid;
+      place-items: center;
+      color: #c8c8c8;
+      user-select: none;
+    }
+
+    .beat-label {
+      height: 26px;
+      background: transparent;
+      border-color: transparent;
+      font-size: 12px;
+    }
+
+    .step.active {
+      background: var(--green);
+      border-color: var(--green);
+      color: white;
+    }
+
+    .step.playhead {
+      outline: 3px solid rgba(59,130,246,0.35);
+      outline-offset: 1px;
+    }
+
+    .sound-controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .sound-card {
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfbfb;
+    }
+
+    .sound-card strong { display: block; margin-bottom: 8px; }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: 1fr 90px;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    #youtubePlayer {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #111;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #e5e5e5;
+      padding: 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th { color: #666; font-weight: 500; }
+
+    .segment-input { width: 92px; }
+
+    .status {
+      margin-top: 10px;
+      color: var(--green-dark);
+      font-size: 13px;
+      min-height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>自訂聲音節奏播放器</h1>
+
+    <div class="layout">
+      <main class="card">
+        <div class="toolbar">
+          <button id="playBtn" class="primary">▶ 播放</button>
+          <button id="stopBtn">■ 停止並歸零</button>
+          <label>速度 BPM</label>
+          <input id="bpmInput" type="number" value="90" min="30" max="240" />
+          <label>播放組</label>
+          <select id="groupSelect"></select>
+          <button id="addGroupBtn">新增播放組</button>
+          <button id="clearBtn">清除目前組節奏</button>
+        </div>
+
+        <div class="sequencer-wrap">
+          <div id="sequencer" class="sequencer"></div>
+        </div>
+
+        <p class="hint">
+          這不是固定鼓組。左邊每一列都是你自行新增的「音源」，例如杯子撞擊、敲桌子、拍手、玻璃聲、環境音。點擊格子設定何時播放該音源。
+        </p>
+      </main>
+
+      <aside class="card">
+        <h2>音源管理</h2>
+        <div class="toolbar">
+          <input id="newSoundName" type="text" placeholder="例如：杯子撞擊" style="flex:1; min-width:160px;" />
+          <button id="addSoundBtn" class="primary">新增音源</button>
+        </div>
+        <div id="soundControls" class="sound-controls"></div>
+        <p class="hint">
+          新增音源後，所有播放組都會出現同一個音源列，但每個播放組可以有不同節奏格子設定。
+        </p>
+      </aside>
+    </div>
+
+    <div class="layout" style="margin-top:20px;">
+      <section class="card">
+        <h2>YouTube 段落編排</h2>
+        <div class="inline">
+          <input id="youtubeUrl" type="url" placeholder="貼上 YouTube 網址" style="flex:1; min-width:260px;" />
+          <button id="loadYoutubeBtn" class="blue">讀取 YouTube</button>
+          <button id="openYoutubeBtn">另開 YouTube</button>
+          <button id="playYoutubeBtn">播放 YouTube</button>
+          <button id="stopYoutubeBtn">停止 YouTube</button>
+        </div>
+        <div id="youtubePlayer"></div>
+        <div id="youtubeStatus" class="hint"></div>
+        <p class="hint">
+          可設定某個時間段使用哪一個播放組，例如 0:00–1:00 用 A 組，1:00–2:00 用 B 組。播放 YouTube 時，系統會依照目前時間自動切換播放組。
+        </p>
+
+        <div class="inline" style="margin:14px 0;">
+          <button id="addSegmentBtn">新增段落</button>
+          <button id="enableFollowBtn" class="primary">啟用段落跟隨</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>開始秒數</th>
+              <th>結束秒數</th>
+              <th>播放組</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="segmentBody"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>專案 JSON 匯出 / 匯入</h2>
+        <div class="toolbar">
+          <button id="exportBtn" class="blue">匯出 JSON</button>
+          <button id="importBtn" class="primary">匯入 JSON</button>
+        </div>
+        <textarea id="jsonArea" placeholder="按「匯出 JSON」會在這裡產生專案資料；貼上 JSON 後可按「匯入 JSON」讀回設定與音檔。"></textarea>
+        <p class="hint">JSON 目前會保存已上傳音檔，方式是把音檔轉成 Data URL 寫進 JSON。好處是單一 JSON 就能恢復專案；缺點是音檔越多，JSON 會越大。</p>
+        <div id="status" class="status"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    const STEPS = 16;
+
+    function makeSound(name = '新音源') {
+      return {
+        id: crypto.randomUUID(),
+        name,
+        volume: 1,
+        audioName: '',
+        audioDataUrl: '',
+        patternsByGroup: {}
+      };
+    }
+
+    let state = {
+      bpm: 90,
+      activeGroupId: 'group-a',
+      groups: [
+        { id: 'group-a', name: 'A 組' },
+        { id: 'group-b', name: 'B 組' }
+      ],
+      sounds: [],
+      youtubeUrl: '',
+      segments: [
+        { start: 0, end: 60, groupId: 'group-a' },
+        { start: 60, end: 120, groupId: 'group-b' }
+      ]
+    };
+
+    let timer = null;
+    let isPaused = false;
+    let stepIndex = 0;
+    let youtubePlayer = null;
+    let youtubeReady = false;
+    let pendingYoutubeId = '';
+    let followSegments = false;
+    let youtubePollTimer = null;
+
+    const sequencerEl = document.getElementById('sequencer');
+    const soundControlsEl = document.getElementById('soundControls');
+    const groupSelectEl = document.getElementById('groupSelect');
+    const bpmInputEl = document.getElementById('bpmInput');
+    const segmentBodyEl = document.getElementById('segmentBody');
+    const jsonAreaEl = document.getElementById('jsonArea');
+    const statusEl = document.getElementById('status');
+
+    function ensurePatterns() {
+      state.sounds.forEach(sound => {
+        if (!sound.patternsByGroup) sound.patternsByGroup = {};
+        state.groups.forEach(group => {
+          if (!Array.isArray(sound.patternsByGroup[group.id])) sound.patternsByGroup[group.id] = [];
+        });
+      });
+    }
+
+    function getActiveGroup() {
+      return state.groups.find(g => g.id === state.activeGroupId) || state.groups[0];
+    }
+
+    function getPattern(sound) {
+      ensurePatterns();
+      return sound.patternsByGroup[state.activeGroupId] || [];
+    }
+
+    function setPattern(sound, pattern) {
+      ensurePatterns();
+      sound.patternsByGroup[state.activeGroupId] = pattern;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+      setTimeout(() => {
+        if (statusEl.textContent === text) statusEl.textContent = '';
+      }, 3500);
+    }
+
+    function renderAll() {
+      ensurePatterns();
+      bpmInputEl.value = state.bpm;
+      renderGroups();
+      renderSequencer();
+      renderSoundControls();
+      renderSegments();
+    }
+
+    function renderGroups() {
+      groupSelectEl.innerHTML = '';
+      state.groups.forEach(group => {
+        const opt = document.createElement('option');
+        opt.value = group.id;
+        opt.textContent = group.name;
+        groupSelectEl.appendChild(opt);
+      });
+      groupSelectEl.value = state.activeGroupId;
+    }
+
+    function renderSequencer() {
+      ensurePatterns();
+      sequencerEl.innerHTML = '';
+
+      const empty = document.createElement('div');
+      sequencerEl.appendChild(empty);
+
+      for (let i = 0; i < STEPS; i++) {
+        const label = document.createElement('div');
+        label.className = 'beat-label';
+        label.textContent = i % 4 === 0 ? Math.floor(i / 4) + 1 : '';
+        sequencerEl.appendChild(label);
+      }
+
+      if (state.sounds.length === 0) {
+        const note = document.createElement('div');
+        note.className = 'hint';
+        note.style.gridColumn = '1 / span 17';
+        note.style.padding = '20px';
+        note.textContent = '請先在右側新增音源，例如「杯子撞擊」，再上傳音檔與設定節奏。';
+        sequencerEl.appendChild(note);
+        return;
+      }
+
+      state.sounds.forEach((sound, soundIdx) => {
+        const name = document.createElement('div');
+        name.className = 'sound-name';
+        name.textContent = sound.name;
+        sequencerEl.appendChild(name);
+
+        const pattern = getPattern(sound);
+        for (let i = 0; i < STEPS; i++) {
+          const cell = document.createElement('div');
+          cell.className = 'step';
+          if (pattern.includes(i)) cell.classList.add('active');
+          if (i === stepIndex && timer) cell.classList.add('playhead');
+          cell.textContent = i % 4 === 0 ? Math.floor(i / 4) + 1 : '';
+          cell.addEventListener('click', () => toggleStep(soundIdx, i));
+          sequencerEl.appendChild(cell);
+        }
+      });
+    }
+
+    function renderSoundControls() {
+      soundControlsEl.innerHTML = '';
+
+      if (state.sounds.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = '目前尚未新增音源。';
+        soundControlsEl.appendChild(p);
+        return;
+      }
+
+      state.sounds.forEach((sound, index) => {
+        const card = document.createElement('div');
+        card.className = 'sound-card';
+        card.innerHTML = `
+          <strong>${escapeHtml(sound.name)}</strong>
+          <div class="mini-grid">
+            <input type="text" value="${escapeAttr(sound.name)}" data-role="name" placeholder="音源名稱" />
+            <input type="number" value="${sound.volume}" min="0" max="1" step="0.05" data-role="volume" title="音量 0~1" />
+          </div>
+          <div class="inline" style="margin-top:8px;">
+            <input type="file" accept="audio/*" data-role="file" />
+            <button class="small" data-role="test">試聽</button>
+            <button class="small red" data-role="delete">刪除</button>
+          </div>
+          <div class="hint">${sound.audioName ? '目前音檔：' + escapeHtml(sound.audioName) : '尚未上傳音檔'}</div>
+        `;
+
+        card.querySelector('[data-role="name"]').addEventListener('input', (e) => {
+          sound.name = e.target.value;
+          renderSequencer();
+        });
+
+        card.querySelector('[data-role="volume"]').addEventListener('input', (e) => {
+          sound.volume = Number(e.target.value);
+        });
+
+        card.querySelector('[data-role="file"]').addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          sound.audioName = file.name;
+          sound.audioDataUrl = await fileToDataUrl(file);
+          renderSoundControls();
+        });
+
+        card.querySelector('[data-role="test"]').addEventListener('click', () => playSound(sound));
+
+        card.querySelector('[data-role="delete"]').addEventListener('click', () => {
+          if (!confirm(`確定刪除音源「${sound.name}」？`)) return;
+          state.sounds.splice(index, 1);
+          renderAll();
+        });
+
+        soundControlsEl.appendChild(card);
+      });
+    }
+
+    function renderSegments() {
+      segmentBodyEl.innerHTML = '';
+      state.segments.forEach((segment, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input class="segment-input" type="number" min="0" value="${segment.start}" data-role="start" /></td>
+          <td><input class="segment-input" type="number" min="0" value="${segment.end}" data-role="end" /></td>
+          <td><select data-role="group"></select></td>
+          <td><button data-role="delete" class="red">刪除</button></td>
+        `;
+        const groupSel = tr.querySelector('[data-role="group"]');
+        state.groups.forEach(g => {
+          const opt = document.createElement('option');
+          opt.value = g.id;
+          opt.textContent = g.name;
+          groupSel.appendChild(opt);
+        });
+        groupSel.value = segment.groupId;
+
+        tr.querySelector('[data-role="start"]').addEventListener('input', e => segment.start = Number(e.target.value));
+        tr.querySelector('[data-role="end"]').addEventListener('input', e => segment.end = Number(e.target.value));
+        groupSel.addEventListener('change', e => segment.groupId = e.target.value);
+        tr.querySelector('[data-role="delete"]').addEventListener('click', () => {
+          state.segments.splice(idx, 1);
+          renderSegments();
+        });
+        segmentBodyEl.appendChild(tr);
+      });
+    }
+
+    function addSound() {
+      const input = document.getElementById('newSoundName');
+      const name = input.value.trim() || `音源 ${state.sounds.length + 1}`;
+      const sound = makeSound(name);
+      state.groups.forEach(group => sound.patternsByGroup[group.id] = []);
+      state.sounds.push(sound);
+      input.value = '';
+      renderAll();
+    }
+
+    function toggleStep(soundIdx, step) {
+      const sound = state.sounds[soundIdx];
+      const pattern = getPattern(sound);
+      const next = pattern.includes(step)
+        ? pattern.filter(x => x !== step)
+        : [...pattern, step].sort((a, b) => a - b);
+      setPattern(sound, next);
+      renderSequencer();
+    }
+
+    function updatePlayButton() {
+      const btn = document.getElementById('playBtn');
+      if (timer && !isPaused) {
+        btn.textContent = '⏸ 暫停';
+      } else {
+        btn.textContent = '▶ 播放';
+      }
+    }
+
+    function toggleSequencer() {
+      if (timer && !isPaused) {
+        pauseSequencer();
+      } else {
+        startSequencer(false);
+      }
+    }
+
+    function startSequencer(reset = false) {
+      if (timer) clearInterval(timer);
+      state.bpm = Number(bpmInputEl.value) || 90;
+      if (reset) stepIndex = 0;
+      isPaused = false;
+      const intervalMs = (60 / state.bpm / 4) * 1000;
+      playStep();
+      timer = setInterval(() => {
+        stepIndex = (stepIndex + 1) % STEPS;
+        playStep();
+        renderSequencer();
+      }, intervalMs);
+      updatePlayButton();
+      renderSequencer();
+    }
+
+    function pauseSequencer() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      isPaused = true;
+      updatePlayButton();
+      renderSequencer();
+    }
+
+    function stopSequencer(reset = true) {
+      if (timer) clearInterval(timer);
+      timer = null;
+      isPaused = false;
+      if (reset) stepIndex = 0;
+      updatePlayButton();
+      renderSequencer();
+    }
+
+    function playStep() {
+      state.sounds.forEach(sound => {
+        if (getPattern(sound).includes(stepIndex)) playSound(sound);
+      });
+    }
+
+    function playSound(sound) {
+      if (!sound.audioDataUrl) return;
+      const audio = new Audio(sound.audioDataUrl);
+      audio.volume = Math.max(0, Math.min(1, Number(sound.volume) || 0));
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
+
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function exportProject() {
+      state.bpm = Number(bpmInputEl.value) || state.bpm;
+      state.youtubeUrl = document.getElementById('youtubeUrl').value || state.youtubeUrl;
+      ensurePatterns();
+      const project = {
+        app: 'custom-sound-sequencer-youtube-project',
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        state
+      };
+      jsonAreaEl.value = JSON.stringify(project, null, 2);
+      setStatus('已產生 JSON。');
+    }
+
+    async function importProject() {
+      try {
+        const project = JSON.parse(jsonAreaEl.value);
+        if (!project.state || !Array.isArray(project.state.groups)) throw new Error('格式不正確');
+        state = project.state;
+        if (!Array.isArray(state.sounds)) state.sounds = [];
+        ensurePatterns();
+        document.getElementById('youtubeUrl').value = state.youtubeUrl || '';
+        renderAll();
+        setStatus('已匯入專案。');
+      } catch (err) {
+        alert('匯入失敗：JSON 格式不正確或不是此專案格式。');
+      }
+    }
+
+    function downloadJson() {
+      if (!jsonAreaEl.value.trim()) exportProject();
+      const blob = new Blob([jsonAreaEl.value], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sound-sequencer-project.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function addGroup() {
+      const groupNo = state.groups.length + 1;
+      const newGroup = {
+        id: crypto.randomUUID(),
+        name: String.fromCharCode(64 + groupNo) + ' 組'
+      };
+      state.groups.push(newGroup);
+      state.sounds.forEach(sound => {
+        if (!sound.patternsByGroup) sound.patternsByGroup = {};
+        sound.patternsByGroup[newGroup.id] = [];
+      });
+      state.activeGroupId = newGroup.id;
+      renderAll();
+    }
+
+    function clearCurrentGroup() {
+      state.sounds.forEach(sound => setPattern(sound, []));
+      renderSequencer();
+    }
+
+    function addSegment() {
+      state.segments.push({ start: 0, end: 30, groupId: state.activeGroupId });
+      renderSegments();
+    }
+
+    function extractYoutubeId(url) {
+      try {
+        const u = new URL(url);
+        const host = u.hostname.replace('www.', '');
+
+        if (host === 'youtu.be') return u.pathname.split('/').filter(Boolean)[0] || '';
+        if (u.searchParams.get('v')) return u.searchParams.get('v');
+
+        const pathParts = u.pathname.split('/').filter(Boolean);
+        const shortsIndex = pathParts.indexOf('shorts');
+        if (shortsIndex >= 0 && pathParts[shortsIndex + 1]) return pathParts[shortsIndex + 1];
+
+        const embedIndex = pathParts.indexOf('embed');
+        if (embedIndex >= 0 && pathParts[embedIndex + 1]) return pathParts[embedIndex + 1];
+
+        const liveIndex = pathParts.indexOf('live');
+        if (liveIndex >= 0 && pathParts[liveIndex + 1]) return pathParts[liveIndex + 1];
+
+        return '';
+      } catch {
+        return '';
+      }
+    }
+
+    window.onYouTubeIframeAPIReady = function () {
+      youtubeReady = true;
+      if (pendingYoutubeId) createOrLoadYoutubePlayer(pendingYoutubeId);
+    };
+
+    function createOrLoadYoutubePlayer(videoId) {
+      const status = document.getElementById('youtubeStatus');
+
+      if (!window.YT || !YT.Player) {
+        pendingYoutubeId = videoId;
+        status.textContent = 'YouTube API 尚未載入完成，請稍等幾秒後再按一次「讀取 YouTube」。';
+        return;
+      }
+
+      pendingYoutubeId = '';
+      const origin = location.protocol.startsWith('http') ? location.origin : undefined;
+      const playerVars = { playsinline: 1, rel: 0, enablejsapi: 1, widget_referrer: location.href };
+      if (origin) playerVars.origin = origin;
+
+      if (youtubePlayer && youtubePlayer.loadVideoById) {
+        youtubePlayer.loadVideoById(videoId);
+        youtubePlayer.pauseVideo();
+        status.textContent = '已讀取 YouTube。';
+        return;
+      }
+
+      document.getElementById('youtubePlayer').innerHTML = '';
+      youtubePlayer = new YT.Player('youtubePlayer', {
+        width: '100%',
+        height: '360',
+        videoId,
+        playerVars,
+        events: {
+          onReady: function () {
+            status.textContent = '已讀取 YouTube。';
+          },
+          onError: function (event) {
+            status.textContent = 'YouTube 讀取失敗。可能原因：影片禁止嵌入、網址格式不支援、瀏覽器阻擋第三方內容，或目前是在受限制的預覽環境中執行。';
+          }
+        }
+      });
+    }
+
+    function loadYoutube() {
+      const url = document.getElementById('youtubeUrl').value.trim();
+      const id = extractYoutubeId(url);
+      if (!id) {
+        alert('請貼上有效的 YouTube 網址。');
+        return;
+      }
+      state.youtubeUrl = url;
+      createOrLoadYoutubePlayer(id);
+      setStatus('正在讀取 YouTube。');
+    }
+
+    function playYoutube() {
+      if (youtubePlayer && youtubePlayer.playVideo) youtubePlayer.playVideo();
+      if (!timer) startSequencer(false);
+      startYoutubePolling();
+    }
+
+    function stopYoutube() {
+      if (youtubePlayer && youtubePlayer.pauseVideo) youtubePlayer.pauseVideo();
+      stopYoutubePolling();
+    }
+
+    function startYoutubePolling() {
+      stopYoutubePolling();
+      youtubePollTimer = setInterval(() => {
+        if (!followSegments || !youtubePlayer || !youtubePlayer.getCurrentTime) return;
+        const t = youtubePlayer.getCurrentTime();
+        const segment = state.segments.find(s => t >= Number(s.start) && t < Number(s.end));
+        if (segment && segment.groupId !== state.activeGroupId) {
+          state.activeGroupId = segment.groupId;
+          renderAll();
+        }
+      }, 400);
+    }
+
+    function stopYoutubePolling() {
+      if (youtubePollTimer) clearInterval(youtubePollTimer);
+      youtubePollTimer = null;
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[s]));
+    }
+
+    function escapeAttr(text) {
+      return escapeHtml(text).replace(/'/g, '&#39;');
+    }
+
+    document.getElementById('playBtn').addEventListener('click', toggleSequencer);
+    document.getElementById('stopBtn').addEventListener('click', () => stopSequencer(true));
+    document.getElementById('clearBtn').addEventListener('click', clearCurrentGroup);
+    document.getElementById('addGroupBtn').addEventListener('click', addGroup);
+    document.getElementById('addSoundBtn').addEventListener('click', addSound);
+    document.getElementById('newSoundName').addEventListener('keydown', e => {
+      if (e.key === 'Enter') addSound();
+    });
+    document.getElementById('addSegmentBtn').addEventListener('click', addSegment);
+    document.getElementById('exportBtn').addEventListener('click', exportProject);
+    document.getElementById('importBtn').addEventListener('click', importProject);
+    document.getElementById('loadYoutubeBtn').addEventListener('click', loadYoutube);
+    document.getElementById('openYoutubeBtn').addEventListener('click', () => {
+      const url = document.getElementById('youtubeUrl').value.trim();
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    });
+    document.getElementById('playYoutubeBtn').addEventListener('click', playYoutube);
+    document.getElementById('stopYoutubeBtn').addEventListener('click', stopYoutube);
+    document.getElementById('enableFollowBtn').addEventListener('click', () => {
+      followSegments = !followSegments;
+      document.getElementById('enableFollowBtn').textContent = followSegments ? '已啟用段落跟隨' : '啟用段落跟隨';
+      if (followSegments) startYoutubePolling();
+      else stopYoutubePolling();
+    });
+    groupSelectEl.addEventListener('change', e => {
+      state.activeGroupId = e.target.value;
+      renderSequencer();
+    });
+    bpmInputEl.addEventListener('change', e => {
+      state.bpm = Number(e.target.value) || 90;
+      if (timer) startSequencer(false);
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
