@@ -316,11 +316,12 @@
       <section class="card">
         <h2>專案 JSON 匯出 / 匯入</h2>
         <div class="toolbar">
-          <button id="exportBtn" class="blue">匯出 JSON</button>
-          <button id="importBtn" class="primary">匯入 JSON</button>
+          <button id="exportBtn" class="blue">匯出 JSON 檔</button>
+          <input id="importFileInput" type="file" accept="application/json,.json" style="display:none;" />
+          <button id="importBtn" class="primary">選擇電腦中的 JSON 檔匯入</button>
         </div>
-        <textarea id="jsonArea" placeholder="按「匯出 JSON」會在這裡產生專案資料；貼上 JSON 後可按「匯入 JSON」讀回設定與音檔。"></textarea>
-        <p class="hint">JSON 目前會保存已上傳音檔，方式是把音檔轉成 Data URL 寫進 JSON。好處是單一 JSON 就能恢復專案；缺點是音檔越多，JSON 會越大。</p>
+        <p class="hint">按「匯出 JSON 檔」會直接下載專案檔；按「選擇電腦中的 JSON 檔匯入」會開啟檔案選擇視窗，讓使用者從自己的電腦選取先前匯出的 JSON 檔，並讀回設定與音檔。</p>
+        <p class="hint">JSON 目前會保存已上傳音檔，方式是把音檔轉成 Data URL 寫進 JSON。好處是單一 JSON 就能恢復專案；缺點是音檔越多，JSON 檔會越大。</p>
         <div id="status" class="status"></div>
       </section>
     </div>
@@ -370,7 +371,6 @@
     const groupSelectEl = document.getElementById('groupSelect');
     const bpmInputEl = document.getElementById('bpmInput');
     const segmentBodyEl = document.getElementById('segmentBody');
-    const jsonAreaEl = document.getElementById('jsonArea');
     const statusEl = document.getElementById('status');
 
     function ensurePatterns() {
@@ -652,7 +652,7 @@
       });
     }
 
-    function exportProject() {
+    function buildProjectJson() {
       state.bpm = Number(bpmInputEl.value) || state.bpm;
       state.youtubeUrl = document.getElementById('youtubeUrl').value || state.youtubeUrl;
       ensurePatterns();
@@ -662,34 +662,40 @@
         exportedAt: new Date().toISOString(),
         state
       };
-      jsonAreaEl.value = JSON.stringify(project, null, 2);
-      setStatus('已產生 JSON。');
+      return JSON.stringify(project, null, 2);
     }
 
-    async function importProject() {
+    function exportProject() {
+      const json = buildProjectJson();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const now = new Date();
+      const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `sound-sequencer-project-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus('已匯出 JSON 檔。');
+    }
+
+    async function importProjectFromFile(file) {
       try {
-        const project = JSON.parse(jsonAreaEl.value);
+        const text = await file.text();
+        const project = JSON.parse(text);
         if (!project.state || !Array.isArray(project.state.groups)) throw new Error('格式不正確');
         state = project.state;
         if (!Array.isArray(state.sounds)) state.sounds = [];
         ensurePatterns();
         document.getElementById('youtubeUrl').value = state.youtubeUrl || '';
+        stopSequencer(true);
         renderAll();
-        setStatus('已匯入專案。');
+        setStatus('已匯入 JSON 檔。');
       } catch (err) {
-        alert('匯入失敗：JSON 格式不正確或不是此專案格式。');
+        alert('匯入失敗：JSON 檔格式不正確或不是此專案格式。');
       }
-    }
-
-    function downloadJson() {
-      if (!jsonAreaEl.value.trim()) exportProject();
-      const blob = new Blob([jsonAreaEl.value], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'sound-sequencer-project.json';
-      a.click();
-      URL.revokeObjectURL(url);
     }
 
     function addGroup() {
@@ -843,7 +849,15 @@
     });
     document.getElementById('addSegmentBtn').addEventListener('click', addSegment);
     document.getElementById('exportBtn').addEventListener('click', exportProject);
-    document.getElementById('importBtn').addEventListener('click', importProject);
+    document.getElementById('importBtn').addEventListener('click', () => {
+      document.getElementById('importFileInput').click();
+    });
+    document.getElementById('importFileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await importProjectFromFile(file);
+      e.target.value = '';
+    });
     document.getElementById('loadYoutubeBtn').addEventListener('click', loadYoutube);
     document.getElementById('openYoutubeBtn').addEventListener('click', () => {
       const url = document.getElementById('youtubeUrl').value.trim();
